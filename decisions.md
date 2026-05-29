@@ -109,6 +109,21 @@ Every returned chunk carries a `tier` field:
 
 The `tier_summary` block in every response also reports the actual threshold values used, so an API consumer building their own UI doesn't have to hard-code them.
 
+## Search-time near-duplicate suppression
+
+Article-level `content_hash` catches byte-identical re-posts, but not syndicated boilerplate where outlets reuse the same paragraph across many distinct articles Those chunks slip past ingest-time dedup because the articles themselves are technically different.
+
+**Fix:** at search time, every result set runs through a greedy near-duplicate pass before being returned.
+
+1. Over-fetch `2k` candidates from the ranker (vector-only or hybrid) instead of just `k`.
+2. Load the chunks' embeddings from the `chunks.embedding` BLOB column in a single SQL call.
+3. Walk candidates in score order. For each chunk, compute cosine vs every already-kept chunk. If the max similarity is `≥ DEDUP_COSINE_THRESHOLD` (0.95), drop the chunk as a near-duplicate of the higher-scored one.
+4. Trim survivors to `k`.
+
+Cosine 0.95 was picked empirically — distinct passages on the same topic land around 0.8–0.9, while syndicated copy-paste sits at 0.97+. The threshold lives in [config.py](src/config.py) so it's easy to recalibrate.
+
+The response includes `duplicates_suppressed: <count>` so a consumer can see the dedup pass actually did something (or didn't). Embeddings are L2-normalized at ingest, so the cosine is a plain dot product — cheap enough to run on every search (~400 vector products for default `k=10`).
+
 ## PDF support (pypdf fallback)
 
 Some articles are served as PDFs. I added pypdf to parse them. The result flows through the rest of the pipeline identically to HTML.

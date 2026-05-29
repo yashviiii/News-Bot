@@ -78,6 +78,13 @@ DEFAULT_THRESHOLD = 0.65
 # are labelled "weak" but still returned. Below DEFAULT_THRESHOLD the
 # entire result set is suppressed (hide-over-mislead).
 STRONG_THRESHOLD = 0.72
+# Search-time near-duplicate detection: if two chunks in the result set
+# have an embedding cosine ≥ this threshold, the lower-scored one is
+# dropped. Catches syndicated boilerplate (e.g. marketbeat.com's "Key
+# News" block re-used across many of their articles) that the article-
+# level content_hash can't see because the chunks live in different
+# articles with different titles + URLs.
+DEDUP_COSINE_THRESHOLD = 0.95
 RRF_K_CONSTANT = 60
 VECTOR_CANDIDATES = 20
 BM25_CANDIDATES = 20

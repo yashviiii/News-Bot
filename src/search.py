@@ -171,6 +171,61 @@ def _rrf(
     return scores
 
 
+def _fetch_chunk_embeddings(
+    conn: sqlite3.Connection, chunk_ids: list[int]
+) -> dict[int, np.ndarray]:
+    """Load L2-normalized embeddings for the listed chunk ids."""
+    if not chunk_ids:
+        return {}
+    placeholders = ",".join("?" * len(chunk_ids))
+    rows = conn.execute(
+        f"SELECT id, embedding FROM chunks WHERE id IN ({placeholders})",
+        chunk_ids,
+    ).fetchall()
+    out: dict[int, np.ndarray] = {}
+    for r in rows:
+        blob = r["embedding"]
+        if blob is None:
+            continue
+        out[int(r["id"])] = np.frombuffer(blob, dtype=np.float32)
+    return out
+
+
+def _dedup_pairs_by_embedding(
+    pairs: list[tuple[int, float]],
+    embeddings: dict[int, np.ndarray],
+    *,
+    threshold: float = config.DEDUP_COSINE_THRESHOLD,
+) -> tuple[list[tuple[int, float]], int]:
+    """Greedy near-duplicate removal in score order.
+
+    Walks `pairs` in the order given (which is already sorted by primary
+    score). For each chunk, computes cosine vs every already-kept chunk;
+    if the max similarity meets `threshold`, the chunk is dropped as a
+    near-duplicate of a higher-scored one. Returns (kept_pairs, n_dropped).
+
+    Embeddings are assumed L2-normalized (which they are — see embed.py),
+    so dot product == cosine.
+    """
+    kept: list[tuple[int, float]] = []
+    kept_embs: list[np.ndarray] = []
+    n_dropped = 0
+    for cid, score in pairs:
+        emb = embeddings.get(cid)
+        if emb is None:
+            # Defensive: if we can't compare, keep it.
+            kept.append((cid, score))
+            continue
+        if kept_embs:
+            sims = np.array([float(np.dot(emb, ke)) for ke in kept_embs])
+            if sims.max() >= threshold:
+                n_dropped += 1
+                continue
+        kept.append((cid, score))
+        kept_embs.append(emb)
+    return kept, n_dropped
+
+
 def _fetch_chunk_details(
     conn: sqlite3.Connection, chunk_ids: list[int]
 ) -> dict[int, dict]:
@@ -279,9 +334,13 @@ def search(
                 ),
             }
 
+        # Over-fetch by 2× so dedup has headroom — if syndicated boilerplate
+        # crowds the top, lower-ranked unique chunks bubble up to fill k.
+        overfetch_k = k * 2
+
         if vector_only:
             # Pure cosine: top-K from the already-sorted vector hit list.
-            top_pairs: list[tuple[int, float]] = vector_hits[:k]
+            top_pairs: list[tuple[int, float]] = vector_hits[:overfetch_k]
             rrf_score_map: dict[int, Optional[float]] = {cid: None for cid, _ in top_pairs}
         else:
             bm25_hits = _bm25_search(conn, company_id, q, top=config.BM25_CANDIDATES)
@@ -306,8 +365,20 @@ def search(
                         f"Run /ingest?company={company_used} first or refine your query."
                     ),
                 }
-            top_pairs = sorted(rrf_scores.items(), key=lambda x: -x[1])[:k]
+            top_pairs = sorted(rrf_scores.items(), key=lambda x: -x[1])[:overfetch_k]
             rrf_score_map = {cid: score for cid, score in top_pairs}
+
+        # Near-duplicate suppression: catches syndicated boilerplate that
+        # the article-level content_hash misses (same text reused across
+        # different URLs / titles).
+        embeddings_for_dedup = _fetch_chunk_embeddings(
+            conn, [cid for cid, _ in top_pairs]
+        )
+        top_pairs, n_duplicates_dropped = _dedup_pairs_by_embedding(
+            top_pairs, embeddings_for_dedup
+        )
+        # Trim back to k after dedup.
+        top_pairs = top_pairs[:k]
 
         details = _fetch_chunk_details(conn, [cid for cid, _ in top_pairs])
 
@@ -404,6 +475,7 @@ def search(
             "tier_summary": tier_summary,
             "corpus": corpus,
             "source_coverage": _summarize_source_coverage(results),
+            "duplicates_suppressed": n_duplicates_dropped,
         }
         if tier_summary["weak"] > 0:
             response["weak_match_note"] = (
