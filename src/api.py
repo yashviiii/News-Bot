@@ -37,7 +37,7 @@ app = FastAPI(
     version="0.1.0",
     description=(
         "Local ingestion + hybrid search for company news. "
-        "See /docs for OpenAPI, / for the UI."
+        "Open / for the UI."
     ),
     lifespan=lifespan,
 )
