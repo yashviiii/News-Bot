@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>News Ingestion Pipeline</title>
+  <style>
+    :root {
+      --bg: #faf8ff;
+      --panel: #ffffff;
+      --panel-2: #f3eeff;
+      --text: #1f1a2e;
+      --muted: #6b6485;
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-soft: #ede5ff;
+      --ok: #16a34a;
+      --warn: #b45309;
+      --err: #dc2626;
+      --border: #e7dffb;
+      --shadow: 0 1px 3px rgba(124, 58, 237, 0.06), 0 1px 2px rgba(15, 10, 35, 0.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 1.5rem 2rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      margin: 0 0 0.25rem 0;
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    header p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    nav {
+      margin-top: 1rem;
+      display: flex; gap: 0.25rem;
+    }
+    nav button {
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      padding: 0.65rem 1rem;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    nav button.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      color: var(--text);
+      font: inherit;
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .row > * { flex: 1 1 0; min-width: 140px; }
+    .row.compact > * { flex: 0 1 auto; }
+    .actions { margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center; }
+    button.primary {
+      background: var(--accent);
+      color: #ffffff;
+      border: 0;
+      padding: 0.6rem 1.2rem;
+      border-radius: 0.375rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: background 0.15s ease;
+    }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled {
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button.ghost:hover { background: var(--accent-soft); }
+    .company-picker {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    button.company-btn {
+      background: #ffffff;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.55rem 1.15rem;
+      border-radius: 0.375rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    button.company-btn:hover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    button.company-btn.active {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+    .sample-queries-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
+    .sample-query-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sample-query-card:hover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .sample-query-card .sq-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 0.05rem 0.45rem;
+      border-radius: 0.25rem;
+      margin-bottom: 0.4rem;
+    }
+    .sample-query-card .sq-text {
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+      color: var(--text);
+    }
+    .sample-query-card .sq-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    @keyframes flash-highlight {
+      0%   { box-shadow: 0 0 0 0 var(--accent); }
+      30%  { box-shadow: 0 0 0 5px var(--accent-soft); }
+      100% { box-shadow: var(--shadow); }
+    }
+    .flash-highlight {
+      animation: flash-highlight 1.4s ease;
+    }
+    .ingest-cta {
+      display: inline-block;
+      margin-left: 0.5rem;
+      color: var(--accent);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .spinner {
+      display: inline-block; width: 1rem; height: 1rem;
+      border: 2px solid var(--muted);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 0.5rem 1rem;
+      font-size: 0.9rem;
+    }
+    .summary .label { color: var(--muted); }
+    .summary .value { font-weight: 600; font-size: 1.2rem; }
+    .summary .value.ok { color: var(--ok); }
+    .summary .value.warn { color: var(--warn); }
+    .summary .value.err { color: var(--err); }
+    .article-list, .results-list { list-style: none; padding: 0; margin: 0; }
+    .article-list li, .results-list li {
+      padding: 0.85rem 0;
+      border-top: 1px solid var(--border);
+    }
+    .article-list li:first-child, .results-list li:first-child { border-top: 0; }
+    .article-title { font-weight: 600; }
+    .article-title a { color: var(--accent); text-decoration: none; }
+    .article-title a:hover { text-decoration: underline; }
+    .article-meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+    .chunk-text {
+      margin: 0.5rem 0;
+      padding: 0.6rem 0.85rem;
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+      border-radius: 0.25rem;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.05rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      background: var(--panel-2);
+      color: #5b4a8a;
+      margin-right: 0.35rem;
+    }
+    .badge.section { background: #ddd6ff; color: #5b21b6; font-weight: 600; }
+    .badge.tier-weak { background: #fef3c7; color: #92400e; font-weight: 600; }
+    .badge.tier-strong { background: #dcfce7; color: #166534; font-weight: 600; }
+    .warning {
+      background: #fef3c7; color: #92400e;
+      border: 1px solid #fcd34d;
+      padding: 0.75rem 1rem; border-radius: 0.375rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+    .error {
+      background: #fee2e2; color: #991b1b;
+      border: 1px solid #fca5a5;
+      padding: 0.75rem 1rem; border-radius: 0.375rem;
+      font-size: 0.9rem;
+    }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding: 1rem 0;
+    }
+    .view { display: none; }
+    .view.active { display: block; }
+    code { font-size: 0.85em; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>News Ingestion Pipeline</h1>
+    <p>Local retrieval over recent news. <code>POST /ingest</code> · <code>GET /search</code> · <a href="/docs" style="color:var(--accent)">OpenAPI</a></p>
+    <nav>
+      <button id="tab-search" class="active" type="button">Search</button>
+      <button id="tab-ingest" type="button">Ingest</button>
+      <button id="tab-companies" type="button">Companies ingested</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- INGEST VIEW -->
+    <section id="view-ingest" class="view">
+      <div class="panel">
+        <form id="ingest-form" autocomplete="off">
+          <label for="ingest-company">Company name</label>
+          <input type="text" id="ingest-company" name="company" required maxlength="200" placeholder="Tesla, Apple, Acme Corp …" />
+          <div class="actions">
+            <button class="primary" type="submit" id="ingest-submit">Ingest</button>
+            <label style="margin:0 0 0 0.5rem;">
+              <input type="checkbox" id="ingest-force" /> force (bypass dedup)
+            </label>
+            <span id="ingest-status"></span>
+          </div>
+        </form>
+      </div>
+
+      <div id="ingest-results" class="panel" style="display:none">
+        <h3 style="margin-top:0">Ingestion summary</h3>
+        <div class="summary" id="ingest-summary"></div>
+        <div id="ingest-note"></div>
+        <h3 style="margin-bottom:0.25rem">Articles ingested</h3>
+        <ul class="article-list" id="ingest-articles"></ul>
+      </div>
+    </section>
+
+    <!-- SEARCH VIEW -->
+    <section id="view-search" class="view active">
+      <!-- Quick try: 3 sample companies + jump-to-custom -->
+      <div class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          <div>
+            <h3 style="margin:0 0 0.25rem 0;">Try a sample query</h3>
+            <div class="article-meta">Pick a company to see canned queries — or scroll down for custom search.</div>
+          </div>
+          <button type="button" class="ghost" id="jump-to-custom">↓ Custom Search</button>
+        </div>
+        <div class="company-picker" id="company-picker">
+          <button type="button" class="company-btn" data-company="Tesla">Tesla</button>
+          <button type="button" class="company-btn" data-company="Apple Inc">Apple Inc</button>
+          <button type="button" class="company-btn" data-company="Atlassian">Atlassian</button>
+        </div>
+        <div id="sample-queries-empty" class="article-meta" style="margin-top:0.75rem;">
+          No company selected yet.
+        </div>
+        <div id="sample-queries" style="display:none;margin-top:0.75rem;"></div>
+      </div>
+
+      <!-- Shared result panel (used by both sample queries and custom search) -->
+      <div id="search-results" class="panel" style="display:none">
+        <div id="search-header" style="margin-bottom:0.5rem"></div>
+        <div id="search-warning"></div>
+        <div id="search-corpus" class="article-meta" style="margin-bottom:0.75rem"></div>
+        <ul class="results-list" id="search-hits"></ul>
+      </div>
+
+      <!-- Custom search -->
+      <div class="panel" id="custom-search-panel">
+        <h3 style="margin:0 0 0.5rem 0;">Custom Search</h3>
+        <div class="article-meta" style="margin-bottom:0.75rem;">
+          Pick from companies already ingested, or type a new name (the system will tell you if you need to ingest it first).
+        </div>
+        <form id="search-form" autocomplete="off">
+          <div class="row">
+            <div>
+              <label for="search-company">Company</label>
+              <input type="text" id="search-company" name="company" list="known-companies"
+                     maxlength="200" placeholder="Tesla, Apple Inc, …" />
+              <datalist id="known-companies"></datalist>
+            </div>
+            <div style="flex:2 1 0">
+              <label for="search-query">Query</label>
+              <input type="text" id="search-query" name="q" required maxlength="500"
+                     placeholder="Where will the Tesla Roadster be built?" />
+            </div>
+          </div>
+          <div class="row compact" style="margin-top:0.75rem; align-items:flex-end;">
+            <div style="min-width:90px">
+              <label for="search-k">k <span style="color:var(--muted);font-weight:normal">(optional)</span></label>
+              <input type="number" id="search-k" placeholder="5" min="1" max="100" />
+            </div>
+            <div style="min-width:120px">
+              <label for="search-threshold">threshold <span style="color:var(--muted);font-weight:normal">(optional)</span></label>
+              <input type="number" id="search-threshold" placeholder="0.65" min="0" max="1" step="0.05" />
+            </div>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;color:var(--text);margin:0 0 0.5rem 0;">
+              <input type="checkbox" id="search-vector-only" />
+              Cosine only <span style="color:var(--muted);">(uncheck for BM25+RRF)</span>
+            </label>
+          </div>
+          <div class="actions">
+            <button class="primary" type="submit" id="search-submit">Search</button>
+            <span id="search-status"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- COMPANIES VIEW -->
+    <section id="view-companies" class="view">
+      <!-- Mode 1: list of all companies -->
+      <div class="panel" id="companies-list-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0 0 0.25rem 0">Companies in this database</h3>
+            <div class="article-meta">Click a company to view its articles.</div>
+          </div>
+          <button class="primary" type="button" id="companies-refresh">Refresh</button>
+        </div>
+        <div id="companies-status" style="margin-top:0.75rem"></div>
+        <ul class="article-list" id="companies-list" style="margin-top:0.5rem"></ul>
+      </div>
+
+      <!-- Mode 2: articles for the selected company -->
+      <div class="panel" id="company-articles-panel" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+          <div>
+            <button type="button" class="ghost" id="back-to-companies">← Back to companies</button>
+          </div>
+          <div style="min-width:180px">
+            <label for="company-articles-status" style="font-size:0.85rem;color:var(--muted)">Filter by status</label>
+            <select id="company-articles-status" style="width:100%;padding:0.5rem 0.75rem;background:var(--panel);border:1px solid var(--border);border-radius:0.375rem;color:var(--text);font:inherit;">
+              <option value="">any</option>
+              <option value="ok" selected>ok</option>
+              <option value="failed">failed</option>
+              <option value="empty">empty</option>
+              <option value="filtered">filtered</option>
+            </select>
+          </div>
+        </div>
+        <div id="company-articles-header" style="margin-bottom:0.5rem"></div>
+        <div id="company-articles-status-msg"></div>
+        <ul class="article-list" id="company-articles-list"></ul>
+      </div>
+    </section>
+
+  </main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ----- helpers -----
+
+  // Escape-free DOM creation: NEVER use innerHTML with external data.
+  function el(tag, attrs, ...children) {
+    const e = document.createElement(tag);
+    if (attrs) {
+      for (const k of Object.keys(attrs)) {
+        if (k === "class") e.className = attrs[k];
+        else if (k === "text") e.textContent = attrs[k];
+        else e.setAttribute(k, attrs[k]);
+      }
+    }
+    for (const c of children) {
+      if (c == null) continue;
+      e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+
+  // Only allow http(s) anchors. Anything else → render as plain text.
+  function safeAnchor(url, label) {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) { return document.createTextNode(label || url || ""); }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return document.createTextNode(label || url);
+    }
+    const a = document.createElement("a");
+    a.href = parsed.toString();
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = label || parsed.toString();
+    return a;
+  }
+
+  function fmtDate(s) {
+    if (!s) return "";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s.slice(0, 10);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  // ----- tabs -----
+  const TABS = ["search", "ingest", "companies"];
+  const tabEls = Object.fromEntries(TABS.map(n => [n, document.getElementById("tab-" + n)]));
+  const viewEls = Object.fromEntries(TABS.map(n => [n, document.getElementById("view-" + n)]));
+
+  function showView(name) {
+    if (!TABS.includes(name)) name = "search";
+    for (const t of TABS) {
+      tabEls[t].classList.toggle("active", t === name);
+      viewEls[t].classList.toggle("active", t === name);
+    }
+    location.hash = name;
+    if (name === "companies") {
+      // Always start on the list view when (re-)entering Companies tab.
+      const listPanel = document.getElementById("companies-list-panel");
+      const articlesPanel = document.getElementById("company-articles-panel");
+      if (listPanel && articlesPanel) {
+        listPanel.style.display = "";
+        articlesPanel.style.display = "none";
+      }
+      loadCompanies();
+    }
+    if (name === "search") loadKnownCompanies();
+  }
+  for (const t of TABS) tabEls[t].addEventListener("click", () => showView(t));
+  const initial = (location.hash || "").replace("#", "");
+  if (TABS.includes(initial)) showView(initial);
+  // Trigger initial datalist load for the default-visible Search tab.
+  // (showView already wires this for hash-navigation; this covers fresh loads.)
+  setTimeout(() => loadKnownCompanies(), 0);
+
+  // ----- ingest flow -----
+  const ingestForm = document.getElementById("ingest-form");
+  const ingestSubmit = document.getElementById("ingest-submit");
+  const ingestStatus = document.getElementById("ingest-status");
+  const ingestResultsPanel = document.getElementById("ingest-results");
+  const ingestSummaryEl = document.getElementById("ingest-summary");
+  const ingestNote = document.getElementById("ingest-note");
+  const ingestArticles = document.getElementById("ingest-articles");
+
+  function summaryRow(label, value, klass) {
+    return el("div", null,
+      el("div", { class: "label", text: label }),
+      el("div", { class: "value " + (klass || ""), text: String(value) })
+    );
+  }
+
+  async function runIngest(company, force) {
+    const url = "/ingest?company=" + encodeURIComponent(company) + (force ? "&force=true" : "");
+    const resp = await fetch(url, { method: "POST" });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+    return body;
+  }
+
+  async function fetchArticles(company) {
+    const url = "/articles?company=" + encodeURIComponent(company) + "&status=ok";
+    const resp = await fetch(url);
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+    return body.articles || [];
+  }
+
+  ingestForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const company = document.getElementById("ingest-company").value.trim();
+    if (!company) return;
+    const force = document.getElementById("ingest-force").checked;
+
+    ingestSubmit.disabled = true;
+    clear(ingestStatus);
+    ingestStatus.appendChild(el("span", { class: "spinner" }));
+    ingestStatus.appendChild(document.createTextNode(" Ingesting " + company + " — this can take 30s–2min on first run…"));
+    ingestResultsPanel.style.display = "none";
+
+    try {
+      const summary = await runIngest(company, force);
+      const articles = await fetchArticles(company);
+
+      // Summary block
+      clear(ingestSummaryEl);
+      const okKlass = summary.successful > 0 ? "ok" : "warn";
+      ingestSummaryEl.appendChild(summaryRow("Successful", summary.successful, okKlass));
+      ingestSummaryEl.appendChild(summaryRow("Attempted", summary.attempted));
+      ingestSummaryEl.appendChild(summaryRow("Chunks", summary.chunks_created));
+      ingestSummaryEl.appendChild(summaryRow("Failed", summary.failed, summary.failed > 0 ? "err" : ""));
+      ingestSummaryEl.appendChild(summaryRow("Empty", summary.empty));
+      ingestSummaryEl.appendChild(summaryRow("Filtered", summary.filtered));
+      ingestSummaryEl.appendChild(summaryRow("Skipped", summary.skipped_duplicate));
+
+      // Note
+      clear(ingestNote);
+      if (summary.note) {
+        ingestNote.appendChild(el("div", { class: "warning", text: summary.note }));
+      }
+
+      // Article list
+      clear(ingestArticles);
+      if (!articles.length) {
+        ingestArticles.appendChild(el("li", { class: "empty", text: "No articles to show." }));
+      } else {
+        for (const art of articles) {
+          const li = el("li");
+          const title = el("div", { class: "article-title" });
+          title.appendChild(safeAnchor(art.url, art.title || art.url));
+          li.appendChild(title);
+          const meta = el("div", { class: "article-meta" });
+          const parts = [];
+          if (art.source_domain) parts.push(art.source_domain);
+          if (art.published_at) parts.push(fmtDate(art.published_at));
+          parts.push((art.chunk_count || 0) + " chunks");
+          meta.appendChild(document.createTextNode(parts.join(" · ")));
+          li.appendChild(meta);
+          ingestArticles.appendChild(li);
+        }
+      }
+
+      ingestResultsPanel.style.display = "";
+
+      // Prefill the search-page company field for convenience.
+      const searchCompany = document.getElementById("search-company");
+      if (!searchCompany.value) searchCompany.value = company;
+    } catch (err) {
+      clear(ingestNote);
+      ingestNote.appendChild(el("div", { class: "error", text: "Ingest failed: " + err.message }));
+      ingestResultsPanel.style.display = "";
+      clear(ingestSummaryEl);
+      clear(ingestArticles);
+    } finally {
+      clear(ingestStatus);
+      ingestSubmit.disabled = false;
+    }
+  });
+
+  // ----- search flow -----
+  const searchForm = document.getElementById("search-form");
+  const searchSubmit = document.getElementById("search-submit");
+  const searchStatus = document.getElementById("search-status");
+  const searchPanel = document.getElementById("search-results");
+  const searchHeader = document.getElementById("search-header");
+  const searchWarning = document.getElementById("search-warning");
+  const searchCorpus = document.getElementById("search-corpus");
+  const searchHits = document.getElementById("search-hits");
+
+  async function runSearch(company, q, k, threshold, vectorOnly) {
+    const params = new URLSearchParams({ q });
+    if (company) params.set("company", company);
+    if (k != null) params.set("k", String(k));
+    if (threshold != null) params.set("threshold", String(threshold));
+    params.set("vector_only", vectorOnly ? "true" : "false");
+    const resp = await fetch("/search?" + params.toString());
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+    return body;
+  }
+
+  function renderHit(hit, idx) {
+    const li = el("li");
+    const src = hit.source || {};
+    // Title row with rank and source link
+    const title = el("div", { class: "article-title" });
+    title.appendChild(document.createTextNode("#" + (idx + 1) + " "));
+    title.appendChild(safeAnchor(src.url, src.title || src.url || "(no title)"));
+    li.appendChild(title);
+
+    // Meta row: tier, scores, section, date, domain
+    const meta = el("div", { class: "article-meta" });
+    if (hit.tier === "weak") {
+      const t = el("span", { class: "badge tier-weak", text: "weak match" });
+      meta.appendChild(t);
+    } else if (hit.tier === "strong") {
+      const t = el("span", { class: "badge tier-strong", text: "strong" });
+      meta.appendChild(t);
+    }
+    if (hit.section) meta.appendChild(el("span", { class: "badge section", text: hit.section }));
+    if (typeof hit.cosine_score === "number") {
+      meta.appendChild(el("span", { class: "badge", text: "cos " + hit.cosine_score.toFixed(3) }));
+    }
+    if (typeof hit.rrf_score === "number") {
+      meta.appendChild(el("span", { class: "badge", text: "rrf " + hit.rrf_score.toFixed(4) }));
+    }
+    const trail = [];
+    if (src.source_domain) trail.push(src.source_domain);
+    if (src.published_at) trail.push(fmtDate(src.published_at));
+    if (trail.length) meta.appendChild(document.createTextNode(trail.join(" · ")));
+    li.appendChild(meta);
+
+    // Chunk text passage
+    if (hit.chunk_text) {
+      li.appendChild(el("div", { class: "chunk-text", text: hit.chunk_text }));
+    }
+    return li;
+  }
+
+  function renderCorpus(corpus) {
+    if (!corpus) return "";
+    const parts = [];
+    parts.push((corpus.articles_searched || 0) + " article(s) searched");
+    const dr = corpus.date_range || [];
+    if (dr[0] || dr[1]) {
+      parts.push("range " + (dr[0] ? fmtDate(dr[0]) : "?") + " → " + (dr[1] ? fmtDate(dr[1]) : "?"));
+    }
+    if (corpus.sources && corpus.sources.length) {
+      parts.push("sources: " + corpus.sources.slice(0, 6).join(", ") + (corpus.sources.length > 6 ? "…" : ""));
+    }
+    return parts.join(" · ");
+  }
+
+  function renderResolvedCompany(body) {
+    if (!body || !body.company) return null;
+    const wrap = el("div", { style: "display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap" });
+    wrap.appendChild(el("span", { style: "color:var(--muted);font-size:0.85rem", text: "Results for" }));
+    wrap.appendChild(el("strong", { style: "font-size:1.1rem;color:var(--text)", text: body.company }));
+    if (body.company_inferred) {
+      wrap.appendChild(el("span", { class: "badge", text: "inferred from query" }));
+    }
+    if (body.mode) {
+      wrap.appendChild(el("span", {
+        class: "badge",
+        text: body.mode === "cosine" ? "cosine-only" : "hybrid (BM25+RRF)"
+      }));
+    }
+    return wrap;
+  }
+
+  function renderSourceCoverage(coverage) {
+    if (!coverage || coverage.n_sources === 0) return null;
+    const wrap = el("div", { style: "background:var(--accent-soft);border:1px solid var(--border);border-radius:0.375rem;padding:0.6rem 0.85rem;margin:0.5rem 0;font-size:0.88rem;" });
+    const headline = el("div", { style: "font-weight:600;color:var(--text);margin-bottom:0.25rem" });
+    if (coverage.multi_source) {
+      headline.appendChild(document.createTextNode(
+        "Corroborated across " + coverage.n_sources + " sources (" + coverage.n_articles + " articles)"
+      ));
+    } else {
+      headline.appendChild(document.createTextNode("Single-source coverage only"));
+    }
+    wrap.appendChild(headline);
+    if (coverage.note) {
+      wrap.appendChild(el("div", { style: "color:var(--muted);margin-bottom:0.4rem", text: coverage.note }));
+    }
+    if (coverage.per_source && coverage.per_source.length) {
+      const list = el("div", { style: "display:flex;gap:0.4rem;flex-wrap:wrap" });
+      for (const ps of coverage.per_source) {
+        const tag = el("span", { class: "badge", text: ps.source_domain + " · " + ps.n_chunks + " chunk" + (ps.n_chunks === 1 ? "" : "s") });
+        list.appendChild(tag);
+      }
+      wrap.appendChild(list);
+    }
+    return wrap;
+  }
+
+  searchForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const company = document.getElementById("search-company").value.trim();
+    const q = document.getElementById("search-query").value.trim();
+    const kRaw = document.getElementById("search-k").value.trim();
+    const tRaw = document.getElementById("search-threshold").value.trim();
+    const k = kRaw === "" ? null : (parseInt(kRaw, 10) || null);
+    const threshold = tRaw === "" ? null : (parseFloat(tRaw));
+    const vectorOnly = document.getElementById("search-vector-only").checked;
+    if (!q) return;
+    await runSearchAndDisplay({ company, q, k, threshold, vectorOnly });
+  });
+
+  // ----- companies flow -----
+  const companiesList = document.getElementById("companies-list");
+  const companiesStatus = document.getElementById("companies-status");
+  const companiesRefresh = document.getElementById("companies-refresh");
+  let companiesLoaded = false;
+
+  async function fetchCompanies() {
+    const resp = await fetch("/companies");
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+    return body.companies || [];
+  }
+
+  function renderCompanies(rows) {
+    clear(companiesList);
+    if (!rows.length) {
+      companiesList.appendChild(el("li", { class: "empty", text: "No companies ingested yet. Use the Ingest tab to add one." }));
+      return;
+    }
+    for (const c of rows) {
+      const li = el("li");
+      const titleRow = el("div", { class: "article-title" });
+      // Clickable company name → switch to Search tab. If it's one of the
+      // built-in sample companies, expand its sample queries; otherwise
+      // pre-fill it into the custom-search form.
+      const a = el("a", { href: "#articles" });
+      a.textContent = c.name || "(unnamed)";
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        if (c.name) openCompanyArticles(c.name);
+      });
+      titleRow.appendChild(a);
+      li.appendChild(titleRow);
+      const meta = el("div", { class: "article-meta" });
+      const parts = [];
+      parts.push((c.article_count || 0) + " articles");
+      parts.push((c.chunk_count || 0) + " chunks");
+      if (c.last_ingested) parts.push("last ingested " + fmtDate(c.last_ingested));
+      meta.appendChild(document.createTextNode(parts.join(" · ")));
+      li.appendChild(meta);
+      companiesList.appendChild(li);
+    }
+  }
+
+  async function loadCompanies(force) {
+    if (companiesLoaded && !force) return;
+    clear(companiesStatus);
+    companiesStatus.appendChild(el("span", { class: "spinner" }));
+    companiesStatus.appendChild(document.createTextNode(" Loading…"));
+    try {
+      const rows = await fetchCompanies();
+      renderCompanies(rows);
+      companiesLoaded = true;
+    } catch (err) {
+      clear(companiesList);
+      companiesList.appendChild(el("li", null, el("div", { class: "error", text: "Failed to load: " + err.message })));
+    } finally {
+      clear(companiesStatus);
+    }
+  }
+  companiesRefresh.addEventListener("click", () => loadCompanies(true));
+
+  // ----- company-articles sub-view (inside Companies tab) -----
+  const companiesListPanel = document.getElementById("companies-list-panel");
+  const companyArticlesPanel = document.getElementById("company-articles-panel");
+  const companyArticlesHeader = document.getElementById("company-articles-header");
+  const companyArticlesMsg = document.getElementById("company-articles-status-msg");
+  const companyArticlesList = document.getElementById("company-articles-list");
+  const companyArticlesStatus = document.getElementById("company-articles-status");
+  const backToCompanies = document.getElementById("back-to-companies");
+  let activeArticlesCompany = null;
+
+  function showCompaniesList() {
+    activeArticlesCompany = null;
+    companiesListPanel.style.display = "";
+    companyArticlesPanel.style.display = "none";
+  }
+
+  function statusBadgeStyle(badge, status) {
+    if (status === "ok") { badge.style.background = "#dcfce7"; badge.style.color = "#166534"; }
+    else if (status === "failed") { badge.style.background = "#fee2e2"; badge.style.color = "#991b1b"; }
+    else if (status === "empty" || status === "filtered") { badge.style.background = "#fef3c7"; badge.style.color = "#92400e"; }
+  }
+
+  async function fetchArticlesForCompany(company, status) {
+    const params = new URLSearchParams({ company });
+    if (status) params.set("status", status);
+    const resp = await fetch("/articles?" + params.toString());
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+    return body;
+  }
+
+  function renderCompanyArticles(body) {
+    clear(companyArticlesHeader);
+    const hdr = el("div", { style: "display:flex;gap:0.5rem;align-items:baseline;flex-wrap:wrap;" });
+    hdr.appendChild(el("strong", { style: "font-size:1.15rem", text: body.company || "(unknown)" }));
+    hdr.appendChild(el("span", { class: "badge", text: (body.articles || []).length + " articles" }));
+    companyArticlesHeader.appendChild(hdr);
+
+    clear(companyArticlesList);
+    if (!body.articles || !body.articles.length) {
+      companyArticlesList.appendChild(el("li", { class: "empty", text: "No articles match this filter." }));
+      return;
+    }
+    for (const a of body.articles) {
+      const li = el("li");
+      const titleRow = el("div", { class: "article-title" });
+      titleRow.appendChild(safeAnchor(a.url, a.title || a.url || "(no title)"));
+      li.appendChild(titleRow);
+
+      const meta = el("div", { class: "article-meta" });
+      const statusText = a.status + (a.status_reason ? " — " + a.status_reason : "");
+      const badge = el("span", { class: "badge", text: statusText });
+      statusBadgeStyle(badge, a.status);
+      meta.appendChild(badge);
+      const parts = [];
+      if (a.source_domain) parts.push(a.source_domain);
+      if (a.published_at) parts.push(fmtDate(a.published_at));
+      parts.push((a.chunk_count || 0) + " chunks");
+      meta.appendChild(document.createTextNode(parts.join(" · ")));
+      li.appendChild(meta);
+      companyArticlesList.appendChild(li);
+    }
+  }
+
+  async function openCompanyArticles(company) {
+    activeArticlesCompany = company;
+    companiesListPanel.style.display = "none";
+    companyArticlesPanel.style.display = "";
+    clear(companyArticlesHeader); clear(companyArticlesList);
+    clear(companyArticlesMsg);
+    companyArticlesMsg.appendChild(el("span", { class: "spinner" }));
+    companyArticlesMsg.appendChild(document.createTextNode(" Loading articles…"));
+    try {
+      const body = await fetchArticlesForCompany(company, companyArticlesStatus.value);
+      renderCompanyArticles(body);
+    } catch (err) {
+      clear(companyArticlesList);
+      companyArticlesList.appendChild(el("li", null, el("div", { class: "error", text: "Failed: " + err.message })));
+    } finally {
+      clear(companyArticlesMsg);
+    }
+  }
+
+  backToCompanies.addEventListener("click", showCompaniesList);
+  companyArticlesStatus.addEventListener("change", () => {
+    if (activeArticlesCompany) openCompanyArticles(activeArticlesCompany);
+  });
+
+  // ----- sample queries (Search tab quick-try) -----
+  const SAMPLE_QUERIES = {
+    "Tesla": [
+      { tag: "Clean factual", q: "Where will the Tesla Roadster be built?",
+        desc: "Multiple Tesla outlets converge on the same answer (Gigafactory Texas)." },
+      { tag: "Multi-source coverage", q: "Tesla Road Rage Driver prison sentence",
+        desc: "Same legal story covered by 6 different outlets — source_coverage flags the corroboration." },
+      { tag: "Off-topic / weak", q: "Tesla bakery sourdough recipe",
+        desc: "Outside the corpus. Top cosine falls under threshold — the system returns no results plus an explanatory warning." },
+    ],
+    "Apple Inc": [
+      { tag: "Clean factual", q: "What is Apple AAPL planning to announce at WWDC about AI?",
+        desc: "Multiple outlets discuss Apple's AI roadmap and WWDC plans." },
+      { tag: "Multi-source coverage", q: "Apple AAPL stock valuation and AI service revenue",
+        desc: "Coverage spans financial outlets — independent corroboration is visible in the source breakdown." },
+      { tag: "Off-topic / weak", q: "Apple kitchen appliance warranty repair",
+        desc: "No coverage — falls below threshold; the system returns zero results rather than misleading passages." },
+    ],
+    "Atlassian": [
+      { tag: "Clean factual", q: "Atlassian outage and AI restructuring strategy",
+        desc: "Several outlets cover the Atlassian restructuring + outage story." },
+      { tag: "Multi-source coverage", q: "Atlassian (TEAM) stock and investor sentiment",
+        desc: "Financial outlets cover Atlassian's stock and investor narrative independently." },
+      { tag: "Off-topic / weak", q: "Atlassian winery vineyard tasting menu",
+        desc: "Completely off-topic — triggers the threshold gate." },
+    ],
+  };
+  const SAMPLE_COMPANIES = Object.keys(SAMPLE_QUERIES);
+
+  const sqContainer = document.getElementById("sample-queries");
+  const sqEmpty = document.getElementById("sample-queries-empty");
+  const companyPicker = document.getElementById("company-picker");
+  let activeSampleCompany = null;
+
+  function renderSampleQueriesFor(company) {
+    activeSampleCompany = company;
+    for (const btn of companyPicker.querySelectorAll(".company-btn")) {
+      btn.classList.toggle("active", btn.dataset.company === company);
+    }
+    const items = SAMPLE_QUERIES[company] || [];
+    clear(sqContainer);
+    const list = el("div", { class: "sample-queries-list" });
+    for (const it of items) {
+      const card = el("div", { class: "sample-query-card", role: "button", tabindex: "0" });
+      card.appendChild(el("span", { class: "sq-tag", text: it.tag }));
+      card.appendChild(el("div", { class: "sq-text", text: it.q }));
+      card.appendChild(el("div", { class: "sq-desc", text: it.desc }));
+      const trigger = () => runSearchAndDisplay({ company, q: it.q, k: null, threshold: null, vectorOnly: false });
+      card.addEventListener("click", trigger);
+      card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); trigger(); } });
+      list.appendChild(card);
+    }
+    sqContainer.appendChild(list);
+    sqContainer.style.display = "";
+    sqEmpty.style.display = "none";
+  }
+  for (const btn of companyPicker.querySelectorAll(".company-btn")) {
+    btn.addEventListener("click", () => renderSampleQueriesFor(btn.dataset.company));
+  }
+
+  // ----- jump-to-custom-search -----
+  const customPanel = document.getElementById("custom-search-panel");
+  document.getElementById("jump-to-custom").addEventListener("click", () => {
+    customPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    customPanel.classList.remove("flash-highlight");
+    // Re-trigger the animation
+    void customPanel.offsetWidth;
+    customPanel.classList.add("flash-highlight");
+    document.getElementById("search-query").focus();
+  });
+
+  // ----- known-companies datalist (autocomplete for custom search) -----
+  const knownCompaniesList = document.getElementById("known-companies");
+  let knownCompaniesLoaded = false;
+  async function loadKnownCompanies(force) {
+    if (knownCompaniesLoaded && !force) return;
+    try {
+      const rows = await fetchCompanies();
+      clear(knownCompaniesList);
+      for (const c of rows) {
+        if (!c.name) continue;
+        const opt = document.createElement("option");
+        opt.value = c.name;
+        knownCompaniesList.appendChild(opt);
+      }
+      knownCompaniesLoaded = true;
+    } catch (_) {
+      // non-fatal: search still works without autocomplete
+    }
+  }
+
+  // ----- shared "run search and display" helper used by sample + custom flows -----
+  async function runSearchAndDisplay({ company, q, k, threshold, vectorOnly }) {
+    searchSubmit.disabled = true;
+    clear(searchStatus);
+    searchStatus.appendChild(el("span", { class: "spinner" }));
+    searchStatus.appendChild(document.createTextNode(" Searching…"));
+    searchPanel.style.display = "none";
+
+    try {
+      const body = await runSearch(company || null, q, k, (threshold == null || isNaN(threshold)) ? null : threshold, vectorOnly);
+      clear(searchHeader); clear(searchWarning); clear(searchCorpus); clear(searchHits);
+
+      const header = renderResolvedCompany(body);
+      if (header) searchHeader.appendChild(header);
+      const coverageNode = renderSourceCoverage(body.source_coverage);
+      if (coverageNode) searchHeader.appendChild(coverageNode);
+
+      if (body.warning) {
+        const wnode = el("div", { class: "warning", text: body.warning });
+        searchWarning.appendChild(wnode);
+        if (body.suggestion) {
+          searchWarning.appendChild(el("div", { class: "article-meta", text: body.suggestion }));
+        }
+      }
+      if (body.weak_match_note) {
+        searchWarning.appendChild(el("div", { class: "warning", text: body.weak_match_note }));
+      }
+      const corpusLine = renderCorpus(body.corpus);
+      if (corpusLine) searchCorpus.appendChild(document.createTextNode(corpusLine));
+
+      const hits = body.results || [];
+      if (!hits.length) {
+        searchHits.appendChild(el("li", { class: "empty", text: "No results." }));
+      } else {
+        hits.forEach((h, i) => searchHits.appendChild(renderHit(h, i)));
+      }
+      searchPanel.style.display = "";
+      searchPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (err) {
+      clear(searchHeader); clear(searchWarning); clear(searchCorpus); clear(searchHits);
+      const errBox = el("div", { class: "error" });
+      errBox.appendChild(document.createTextNode("Search failed: " + err.message));
+      // If the error looks like "No data ingested for X", offer a CTA to ingest.
+      const m = /No data ingested for '([^']+)'/.exec(err.message || "");
+      if (m) {
+        const link = el("a", { class: "ingest-cta", text: "→ ingest " + m[1] + " now" });
+        link.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          document.getElementById("ingest-company").value = m[1];
+          showView("ingest");
+        });
+        errBox.appendChild(link);
+      }
+      searchWarning.appendChild(errBox);
+      searchPanel.style.display = "";
+    } finally {
+      clear(searchStatus);
+      searchSubmit.disabled = false;
+    }
+  }
+})();
+</script>
+</body>
+</html>
